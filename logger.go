@@ -5,6 +5,8 @@ import (
 	"log"
 	"os"
 	"runtime"
+
+	"github.com/pkg/errors"
 )
 
 var (
@@ -59,4 +61,45 @@ func Error(format string, a ...interface{}) {
 // ErrorCustom outputs custom format log as ERROR Level
 func ErrorCustom(format string, a ...interface{}) {
 	writeCustomLog(format, a...)
+}
+
+// ErrorWithStack shows error with stack trace
+// err must be from "github.com/pkg/errors"
+func ErrorWithStack(msg string, err error) {
+	type stackTracer interface {
+		StackTrace() errors.StackTrace
+	}
+
+	e, ok := errors.Cause(err).(stackTracer)
+	if !ok {
+		writeCustomLog("No stacked error: %v", err)
+	}
+	st := e.StackTrace()
+	writeLog("ERROR", "%s: %v", msg, err)
+	reverse(st)
+	for i, frame := range st[3:] {
+		fname, line := fileInfo(frame)
+		tail := "..."
+		if i == len(st)-(3+1) {
+			tail = "!"
+		}
+
+		logger.Printf("%s:%d [ERROR] error caused from here %s\n", fname, line, tail)
+	}
+}
+
+func fileInfo(frame errors.Frame) (string, int) {
+	pc := uintptr(frame) - 1
+
+	fn := runtime.FuncForPC(pc)
+	if fn == nil {
+		return "unknown", 0
+	}
+	return fn.FileLine(pc)
+}
+
+func reverse(s errors.StackTrace) {
+	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
+		s[i], s[j] = s[j], s[i]
+	}
 }
